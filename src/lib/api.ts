@@ -365,4 +365,214 @@ export const api = {
     localStorage.setItem(STORAGE_KEY_APPLICATIONS, JSON.stringify(INITIAL_APPLICATIONS));
     localStorage.setItem(STORAGE_KEY_ACTIVITIES, JSON.stringify(INITIAL_ACTIVITIES));
   },
+
+  // ================= DATA MANAGEMENT & MIGRATION =================
+  getLocalData(): { applications: Application[]; activities: ApplicationActivity[] } {
+    return {
+      applications: getLocalApplications(),
+      activities: getLocalActivities(),
+    };
+  },
+
+  getLocalCounts(): { applicationsCount: number; activitiesCount: number } {
+    const apps = getLocalApplications();
+    const acts = getLocalActivities();
+    return {
+      applicationsCount: apps.length,
+      activitiesCount: acts.length,
+    };
+  },
+
+  downloadBackupJson(): void {
+    const data = this.getLocalData();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `job-tracker-backup-${timestamp}.json`;
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  downloadSqlDump(): void {
+    const { applications, activities } = this.getLocalData();
+    const escapeSql = (val: any) => {
+      if (val === null || val === undefined || val === '') return 'NULL';
+      return `'${String(val).replace(/'/g, "''")}'`;
+    };
+
+    let sql = `-- Job Application Tracker SQL Dump\n-- Generated on ${new Date().toISOString()}\n\n`;
+
+    if (applications.length > 0) {
+      sql += `-- 1. Applications (${applications.length} rows)\n`;
+      for (const app of applications) {
+        sql += `INSERT INTO public.applications (id, company_name, company_logo, position, website, linkedin_url, facebook_url, other_social_url, applied_email, application_source, job_posting_url, applied_date, status, interview_date, interview_time, interview_type, interview_link, interview_location, contact_person, expected_salary, offered_salary, follow_up_date, notes, created_at, updated_at)\n`;
+        sql += `VALUES (${escapeSql(app.id)}, ${escapeSql(app.company_name)}, ${escapeSql(app.company_logo)}, ${escapeSql(app.position)}, ${escapeSql(app.website)}, ${escapeSql(app.linkedin_url)}, ${escapeSql(app.facebook_url)}, ${escapeSql(app.other_social_url)}, ${escapeSql(app.applied_email)}, ${escapeSql(app.application_source)}, ${escapeSql(app.job_posting_url)}, ${app.applied_date ? escapeSql(app.applied_date) : 'NULL'}, ${escapeSql(app.status)}, ${app.interview_date ? escapeSql(app.interview_date) : 'NULL'}, ${escapeSql(app.interview_time)}, ${escapeSql(app.interview_type)}, ${escapeSql(app.interview_link)}, ${escapeSql(app.interview_location)}, ${escapeSql(app.contact_person)}, ${escapeSql(app.expected_salary)}, ${escapeSql(app.offered_salary)}, ${app.follow_up_date ? escapeSql(app.follow_up_date) : 'NULL'}, ${escapeSql(app.notes)}, ${escapeSql(app.created_at)}, ${escapeSql(app.updated_at)})\n`;
+        sql += `ON CONFLICT (id) DO UPDATE SET\n`;
+        sql += `  company_name = EXCLUDED.company_name,\n`;
+        sql += `  position = EXCLUDED.position,\n`;
+        sql += `  status = EXCLUDED.status,\n`;
+        sql += `  updated_at = EXCLUDED.updated_at;\n\n`;
+      }
+    }
+
+    if (activities.length > 0) {
+      sql += `-- 2. Application Activities (${activities.length} rows)\n`;
+      for (const act of activities) {
+        sql += `INSERT INTO public.application_activities (id, application_id, activity_type, title, description, activity_date, created_at)\n`;
+        sql += `VALUES (${escapeSql(act.id)}, ${escapeSql(act.application_id)}, ${escapeSql(act.activity_type)}, ${escapeSql(act.title)}, ${escapeSql(act.description)}, ${escapeSql(act.activity_date)}, ${escapeSql(act.created_at)})\n`;
+        sql += `ON CONFLICT (id) DO NOTHING;\n\n`;
+      }
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `job-tracker-insert-${timestamp}.sql`;
+    const blob = new Blob([sql], { type: 'text/sql' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  importData(data: { applications?: Application[]; activities?: ApplicationActivity[] }): {
+    appCount: number;
+    actCount: number;
+  } {
+    if (!data || !Array.isArray(data.applications)) {
+      throw new Error('Invalid backup file format: missing applications array.');
+    }
+
+    const currentApps = getLocalApplications();
+    const currentActs = getLocalActivities();
+
+    const appMap = new Map(currentApps.map((a) => [a.id, a]));
+    for (const app of data.applications) {
+      appMap.set(app.id, app);
+    }
+    const mergedApps = Array.from(appMap.values());
+    saveLocalApplications(mergedApps);
+
+    let mergedActs = currentActs;
+    if (Array.isArray(data.activities)) {
+      const actMap = new Map(currentActs.map((act) => [act.id, act]));
+      for (const act of data.activities) {
+        actMap.set(act.id, act);
+      }
+      mergedActs = Array.from(actMap.values());
+      saveLocalActivities(mergedActs);
+    }
+
+    return {
+      appCount: mergedApps.length,
+      actCount: mergedActs.length,
+    };
+  },
+
+  async migrateLocalToSupabase(): Promise<{
+    success: boolean;
+    appCount: number;
+    actCount: number;
+    error?: string;
+  }> {
+    if (!isSupabaseConfigured || !supabase) {
+      return {
+        success: false,
+        appCount: 0,
+        actCount: 0,
+        error: 'Supabase is not configured yet. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env first.',
+      };
+    }
+
+    try {
+      const { applications, activities } = this.getLocalData();
+
+      if (applications.length === 0) {
+        return { success: true, appCount: 0, actCount: 0 };
+      }
+
+      // Check / format valid UUIDs if any mock or old format
+      const isUUID = (str: string) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+
+      const idMap = new Map<string, string>();
+
+      const cleanedApps = applications.map((app) => {
+        let validId = app.id;
+        if (!isUUID(validId)) {
+          validId = crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-4000-8000-' + Date.now().toString(16).padStart(12, '0');
+          idMap.set(app.id, validId);
+        }
+        return {
+          ...app,
+          id: validId,
+          applied_date: app.applied_date || null,
+          interview_date: app.interview_date || null,
+          follow_up_date: app.follow_up_date || null,
+        };
+      });
+
+      // Batch upsert applications in chunks of 50
+      const CHUNK_SIZE = 50;
+      for (let i = 0; i < cleanedApps.length; i += CHUNK_SIZE) {
+        const chunk = cleanedApps.slice(i, i + CHUNK_SIZE);
+        const { error: appError } = await supabase.from('applications').upsert(chunk, {
+          onConflict: 'id',
+        });
+        if (appError) {
+          throw new Error(`Failed migrating applications batch: ${appError.message}`);
+        }
+      }
+
+      // Cleaned activities
+      const cleanedActs = activities.map((act) => {
+        let validId = act.id;
+        if (!isUUID(validId)) {
+          validId = crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-4000-8000-' + Date.now().toString(16).padStart(12, '0');
+        }
+        const mappedAppId = idMap.get(act.application_id) || act.application_id;
+        return {
+          ...act,
+          id: validId,
+          application_id: mappedAppId,
+        };
+      });
+
+      // Filter activities to only ones whose application_id actually exists in cleanedApps
+      const validAppIds = new Set(cleanedApps.map((a) => a.id));
+      const validActs = cleanedActs.filter((a) => validAppIds.has(a.application_id));
+
+      for (let i = 0; i < validActs.length; i += CHUNK_SIZE) {
+        const chunk = validActs.slice(i, i + CHUNK_SIZE);
+        const { error: actError } = await supabase.from('application_activities').upsert(chunk, {
+          onConflict: 'id',
+        });
+        if (actError) {
+          console.warn('Activities batch warning:', actError.message);
+        }
+      }
+
+      return {
+        success: true,
+        appCount: cleanedApps.length,
+        actCount: validActs.length,
+      };
+    } catch (err: any) {
+      console.error('Migration error:', err);
+      return {
+        success: false,
+        appCount: 0,
+        actCount: 0,
+        error: err?.message || 'Unknown migration error',
+      };
+    }
+  },
 };
