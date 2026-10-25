@@ -45,6 +45,13 @@ const SOURCE_OPTIONS: ApplicationSource[] = [
 
 const INTERVIEW_TYPES: InterviewType[] = ['Phone', 'Online', 'On-site'];
 
+const EXPECTED_SALARY_OPTIONS = [
+  'Rs. 250,000',
+  'Rs. 200,000',
+  'Rs. 180,000',
+  'Rs. 150,000',
+];
+
 export const ApplicationForm: React.FC<ApplicationFormProps> = ({
   isOpen,
   onClose,
@@ -71,7 +78,7 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({
     interview_link: '',
     interview_location: '',
     contact_person: '',
-    expected_salary: '',
+    expected_salary: 'Rs. 180,000',
     offered_salary: '',
     follow_up_date: '',
     notes: '',
@@ -101,7 +108,7 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({
         interview_link: initialData.interview_link || '',
         interview_location: initialData.interview_location || '',
         contact_person: initialData.contact_person || '',
-        expected_salary: initialData.expected_salary || '',
+        expected_salary: initialData.expected_salary || 'Rs. 180,000',
         offered_salary: initialData.offered_salary || '',
         follow_up_date: initialData.follow_up_date || '',
         notes: initialData.notes || '',
@@ -126,7 +133,7 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({
         interview_link: '',
         interview_location: '',
         contact_person: '',
-        expected_salary: '',
+        expected_salary: 'Rs. 180,000',
         offered_salary: '',
         follow_up_date: '',
         notes: '',
@@ -528,15 +535,25 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Expected Salary
                 </label>
-                <input
-                  type="text"
-                  placeholder="e.g. $140k - $160k"
+                <select
                   value={formData.expected_salary}
                   onChange={(e) =>
                     setFormData({ ...formData, expected_salary: e.target.value })
                   }
-                  className="w-full text-sm py-2 px-3 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
+                  className="w-full text-sm py-2 px-3 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium cursor-pointer"
+                >
+                  {formData.expected_salary &&
+                    !EXPECTED_SALARY_OPTIONS.includes(formData.expected_salary) && (
+                      <option value={formData.expected_salary}>
+                        {formData.expected_salary}
+                      </option>
+                    )}
+                  {EXPECTED_SALARY_OPTIONS.map((sal) => (
+                    <option key={sal} value={sal}>
+                      {sal}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
