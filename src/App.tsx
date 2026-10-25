@@ -16,8 +16,6 @@ import { ApplicationTable } from './components/ApplicationTable';
 import { ApplicationForm } from './components/ApplicationForm';
 import { ApplicationDetails } from './components/ApplicationDetails';
 import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
-import { DatabaseStatusBadge } from './components/DatabaseStatusBadge';
-import { DataManagementModal } from './components/DataManagementModal';
 import {
   Plus,
   Briefcase,
@@ -46,8 +44,6 @@ export const AppContent: React.FC = () => {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [appToDelete, setAppToDelete] = useState<Application | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  const [isDataModalOpen, setIsDataModalOpen] = useState(false);
 
   // Filters and Sorting
   const [filters, setFilters] = useState<FilterState>({
@@ -354,14 +350,12 @@ export const AppContent: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            <DatabaseStatusBadge onOpenDataManagement={() => setIsDataModalOpen(true)} />
-
             <button
               onClick={handleOpenAddForm}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold rounded-lg shadow-sm shadow-indigo-100 transition-all cursor-pointer active:scale-95"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Add Application</span>
+              <span>Add Application</span>
             </button>
           </div>
         </div>
@@ -498,12 +492,6 @@ export const AppContent: React.FC = () => {
         }}
         onConfirm={handleConfirmDelete}
         isDeleting={isDeleting}
-      />
-
-      <DataManagementModal
-        isOpen={isDataModalOpen}
-        onClose={() => setIsDataModalOpen(false)}
-        onDataChanged={loadApplications}
       />
     </div>
   );
